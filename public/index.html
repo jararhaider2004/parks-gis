@@ -49,8 +49,14 @@ const layer = L.layerGroup().addTo(map);
 let parks = [];
 
 async function load() {
-  const res = await fetch(`/api/parks?type=${fType.value}&sector=${fSector.value}`);
-  parks = await res.json();
+  try {
+    const res = await fetch(`/api/parks?type=${fType.value}&sector=${fSector.value}`);
+    parks = await res.json();
+  } catch {
+    const all = await (await fetch('parks.json')).json();
+    parks = all.filter(p => (!fType.value || p.type === fType.value) &&
+      p.sector.toLowerCase().includes(fSector.value.toLowerCase()));
+  }
   layer.clearLayers();
   parks.forEach(p => {
     L.circleMarker([p.lat, p.lng], { radius: 8, color: COLORS[p.type], fillOpacity: 0.8 })
@@ -73,10 +79,15 @@ async function save() {
   const body = { name: $('name').value, type: $('type').value, sector: $('sector').value,
                  status: $('status').value, lat: $('lat').value, lng: $('lng').value };
   if (!body.name || !body.sector || !body.lat || !body.lng) return show('Fill all fields!', 'red');
-  const res = await fetch('/api/parks' + ($('id').value ? '/' + $('id').value : ''), {
-    method: $('id').value ? 'PUT' : 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const data = await res.json();
+  let res, data;
+  try {
+    res = await fetch('/api/parks' + ($('id').value ? '/' + $('id').value : ''), {
+      method: $('id').value ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    data = await res.json();
+  } catch {
+    return show('Add/Edit needs the local server (npm start)', 'red');
+  }
   if (!res.ok) return show(data.error, 'red');
   show(data.message + ' successfully!', 'green'); clearForm(); load();
 }
