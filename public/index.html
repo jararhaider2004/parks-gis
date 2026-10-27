@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Islamabad Parks GIS</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial; display: flex; height: 100vh; }
+    #side { width: 300px; padding: 12px; background: #eef7ee; overflow-y: auto; }
+    #map { flex: 1; }
+    h2 { color: #2e7d32; margin-top: 0; }
+    input, select, button { width: 100%; padding: 6px; margin: 4px 0; box-sizing: border-box; }
+    button { background: #2e7d32; color: #fff; border: none; cursor: pointer; }
+    #msg { font-weight: bold; }
+  </style>
+</head>
+<body>
+<div id="side">
+  <h2>🌳 Islamabad Parks</h2>
+  <b>Search / Filter</b>
+  <select id="fType"><option value="">All Types</option></select>
+  <input id="fSector" placeholder="Sector (e.g. F-9)">
+  <button onclick="load()">Search</button>
+  <p id="count"></p>
+
+  <b id="formTitle">Add New Park</b> <small>(click map to pick location)</small>
+  <input id="id" type="hidden">
+  <input id="name" placeholder="Name">
+  <select id="type"></select>
+  <input id="sector" placeholder="Sector">
+  <select id="status"><option>Open</option><option>Closed</option><option>Under Repair</option></select>
+  <input id="lat" placeholder="Latitude">
+  <input id="lng" placeholder="Longitude">
+  <button onclick="save()">Save</button>
+  <button onclick="clearForm()" style="background:#777">Clear</button>
+  <p id="msg"></p>
+</div>
+<div id="map"></div>
+
+<script>
+const $ = k => document.getElementById(k);
+const TYPES = ['Park', 'Playground', 'Walking Track', 'Sports Ground'];
+const COLORS = { 'Park': 'green', 'Playground': 'orange', 'Walking Track': 'blue', 'Sports Ground': 'red' };
+TYPES.forEach(t => { fType.add(new Option(t)); $('type').add(new Option(t)); });
+
+const map = L.map('map').setView([33.70, 73.05], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+const layer = L.layerGroup().addTo(map);
+let parks = [];
+
+async function load() {
+  const res = await fetch(`/api/parks?type=${fType.value}&sector=${fSector.value}`);
+  parks = await res.json();
+  layer.clearLayers();
+  parks.forEach(p => {
+    L.circleMarker([p.lat, p.lng], { radius: 8, color: COLORS[p.type], fillOpacity: 0.8 })
+      .bindPopup(`<b>${p.name}</b><br>${p.type} | ${p.sector}<br>Status: ${p.status}<br>
+        <button onclick="edit(${p.id})">Edit</button> <button onclick="del(${p.id})">Delete</button>`)
+      .addTo(layer);
+  });
+  count.innerText = `Showing ${parks.length} records`;
+}
+
+map.on('click', e => { $('lat').value = e.latlng.lat.toFixed(5); $('lng').value = e.latlng.lng.toFixed(5); });
+
+function edit(pid) {
+  const p = parks.find(x => x.id === pid);
+  ['id', 'name', 'type', 'sector', 'status', 'lat', 'lng'].forEach(k => document.getElementById(k).value = p[k]);
+  formTitle.innerText = 'Edit Park #' + pid;
+}
+
+async function save() {
+  const body = { name: $('name').value, type: $('type').value, sector: $('sector').value,
+                 status: $('status').value, lat: $('lat').value, lng: $('lng').value };
+  if (!body.name || !body.sector || !body.lat || !body.lng) return show('Fill all fields!', 'red');
+  const res = await fetch('/api/parks' + ($('id').value ? '/' + $('id').value : ''), {
+    method: $('id').value ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) return show(data.error, 'red');
+  show(data.message + ' successfully!', 'green'); clearForm(); load();
+}
+
+async function del(pid) {
+  if (!confirm('Delete this park?')) return;
+  await fetch('/api/parks/' + pid, { method: 'DELETE' }); load();
+}
+
+function clearForm() {
+  ['id', 'name', 'sector', 'lat', 'lng'].forEach(k => document.getElementById(k).value = '');
+  formTitle.innerText = 'Add New Park';
+}
+function show(t, c) { msg.innerText = t; msg.style.color = c; }
+
+load();
+</script>
+</body>
+</html>
